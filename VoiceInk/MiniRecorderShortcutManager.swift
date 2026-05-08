@@ -37,13 +37,15 @@ class MiniRecorderShortcutManager: ObservableObject {
     private var visibilityTask: Task<Void, Never>?
     
     private var isCancelHandlerSetup = false
-    
+    private var arePromptHandlersSetup = false
+    private var arePowerModeHandlersSetup = false
+
     // Double-tap Escape handling
     private var escFirstPressTime: Date? = nil
     private let escSecondPressThreshold: TimeInterval = 1.5
     private var isEscapeHandlerSetup = false
     private var escapeTimeoutTask: Task<Void, Never>?
-    
+
     init(engine: VoiceInkEngine, recorderUIManager: RecorderUIManager) {
         self.engine = engine
         self.recorderUIManager = recorderUIManager
@@ -51,6 +53,8 @@ class MiniRecorderShortcutManager: ObservableObject {
         setupEnhancementShortcut()
         setupEscapeHandlerOnce()
         setupCancelHandlerOnce()
+        setupPromptHandlersOnce()
+        setupPowerModeHandlersOnce()
     }
 
     private func setupVisibilityObserver() {
@@ -186,8 +190,12 @@ class MiniRecorderShortcutManager: ObservableObject {
         KeyboardShortcuts.setShortcut(.init(.eight, modifiers: .option), for: .selectPowerMode8)
         KeyboardShortcuts.setShortcut(.init(.nine, modifiers: .option), for: .selectPowerMode9)
         KeyboardShortcuts.setShortcut(.init(.zero, modifiers: .option), for: .selectPowerMode10)
+    }
 
-        // Setup handlers
+    private func setupPowerModeHandlersOnce() {
+        guard !arePowerModeHandlersSetup else { return }
+        arePowerModeHandlersSetup = true
+
         setupPowerModeHandler(for: .selectPowerMode1, index: 0)
         setupPowerModeHandler(for: .selectPowerMode2, index: 1)
         setupPowerModeHandler(for: .selectPowerMode3, index: 2)
@@ -199,7 +207,7 @@ class MiniRecorderShortcutManager: ObservableObject {
         setupPowerModeHandler(for: .selectPowerMode9, index: 8)
         setupPowerModeHandler(for: .selectPowerMode10, index: 9)
     }
-    
+
     private func setupPowerModeHandler(for shortcutName: KeyboardShortcuts.Name, index: Int) {
         KeyboardShortcuts.onKeyDown(for: shortcutName) { [weak self] in
             Task { @MainActor in
@@ -243,8 +251,12 @@ class MiniRecorderShortcutManager: ObservableObject {
         KeyboardShortcuts.setShortcut(.init(.eight, modifiers: .command), for: .selectPrompt8)
         KeyboardShortcuts.setShortcut(.init(.nine, modifiers: .command), for: .selectPrompt9)
         KeyboardShortcuts.setShortcut(.init(.zero, modifiers: .command), for: .selectPrompt10)
-        
-        // Setup handlers
+    }
+
+    private func setupPromptHandlersOnce() {
+        guard !arePromptHandlersSetup else { return }
+        arePromptHandlersSetup = true
+
         setupPromptHandler(for: .selectPrompt1, index: 0)
         setupPromptHandler(for: .selectPrompt2, index: 1)
         setupPromptHandler(for: .selectPrompt3, index: 2)
@@ -256,7 +268,7 @@ class MiniRecorderShortcutManager: ObservableObject {
         setupPromptHandler(for: .selectPrompt9, index: 8)
         setupPromptHandler(for: .selectPrompt10, index: 9)
     }
-    
+
     private func setupPromptHandler(for shortcutName: KeyboardShortcuts.Name, index: Int) {
         KeyboardShortcuts.onKeyDown(for: shortcutName) { [weak self] in
             Task { @MainActor in
