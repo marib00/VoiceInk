@@ -115,6 +115,8 @@ class StreamingTranscriptionService {
 
     /// Start a streaming transcription session for the given model.
     func startStreaming(model: any TranscriptionModel) async throws {
+        try Task.checkCancellation()
+
         let start = Date()
         state = .connecting
         committedSegments = []
@@ -131,10 +133,10 @@ class StreamingTranscriptionService {
         try await provider.connect(model: model, language: selectedLanguage)
 
         // If cancel() was called while we were awaiting the connection, tear down immediately.
-        if state == .cancelled {
+        if Task.isCancelled || state == .cancelled {
             await provider.disconnect()
             self.provider = nil
-            return
+            throw CancellationError()
         }
 
         state = .streaming

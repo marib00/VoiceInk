@@ -52,6 +52,8 @@ final class StreamingTranscriptionSession: TranscriptionSession {
     private let fallbackService: TranscriptionService
     private var model: (any TranscriptionModel)?
     private var streamingFailed = false
+    private var isCancelled = false
+    private var connectionTask: Task<Void, Never>?
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "StreamingTranscriptionSession")
 
     init(streamingService: StreamingTranscriptionService, fallbackService: TranscriptionService) {
@@ -61,6 +63,9 @@ final class StreamingTranscriptionSession: TranscriptionSession {
 
     func prepare(model: any TranscriptionModel) async throws -> ((Data) -> Void)? {
         self.model = model
+        streamingFailed = false
+        isCancelled = false
+        connectionTask?.cancel()
         logger.notice("Streaming session prepare model=\(model.displayName, privacy: .public)")
 
         // Return callback immediately; WebSocket connects in background
@@ -69,13 +74,18 @@ final class StreamingTranscriptionSession: TranscriptionSession {
             service?.sendAudioChunk(data)
         }
 
-        Task { [weak self] in
+        connectionTask = Task { [weak self] in
             guard let self = self else { return }
             do {
+                try Task.checkCancellation()
                 let start = Date()
                 try await self.streamingService.startStreaming(model: model)
+                guard !Task.isCancelled, !self.isCancelled else { return }
                 self.logger.notice("Streaming session connected model=\(model.displayName, privacy: .public) elapsed=\(Date().timeIntervalSince(start), format: .fixed(precision: 3), privacy: .public)s")
+            } catch is CancellationError {
+                self.logger.notice("Streaming session connection cancelled")
             } catch {
+                guard !self.isCancelled else { return }
                 let desc = error.localizedDescription
                 self.logger.error("❌ Failed to start streaming, will fall back to batch: \(desc, privacy: .public)")
                 self.streamingFailed = true
@@ -88,6 +98,11 @@ final class StreamingTranscriptionSession: TranscriptionSession {
     func transcribe(audioURL: URL) async throws -> String {
         guard let model = model else {
             throw VoiceInkEngineError.transcriptionFailed
+        }
+
+        if !streamingFailed {
+            await connectionTask?.value
+            connectionTask = nil
         }
 
         if !streamingFailed {
@@ -113,6 +128,9 @@ final class StreamingTranscriptionSession: TranscriptionSession {
     }
 
     func cancel() {
+        isCancelled = true
+        connectionTask?.cancel()
+        connectionTask = nil
         streamingService.cancel()
     }
 }
