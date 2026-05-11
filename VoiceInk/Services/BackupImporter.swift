@@ -1,5 +1,4 @@
 import Foundation
-import KeyboardShortcuts
 import LaunchAtLogin
 import SwiftData
 
@@ -50,12 +49,23 @@ enum BackupImporter {
 
         if categories.contains(.powerMode) {
             let powerModeManager = PowerModeManager.shared
+            for config in powerModeManager.configurations {
+                ShortcutStore.removeShortcutStorage(for: .powerMode(config.id))
+            }
+
             powerModeManager.configurations = backup.powerModeConfigs
+            let importedPowerModeIds = Set(backup.powerModeConfigs.map(\.id))
 
             if let shortcuts = backup.powerModeShortcuts {
-                for (idString, shortcut) in shortcuts {
-                    guard let id = UUID(uuidString: idString) else { continue }
-                    KeyboardShortcuts.setShortcut(shortcut, for: .powerMode(id: id))
+                for (idString, shortcutBackup) in shortcuts {
+                    guard
+                        let id = UUID(uuidString: idString),
+                        importedPowerModeIds.contains(id)
+                    else {
+                        continue
+                    }
+
+                    ShortcutStore.setShortcut(shortcutBackup.shortcut, for: .powerMode(id))
                 }
             }
 
@@ -83,31 +93,31 @@ enum BackupImporter {
         }
 
         if let shortcut = general.toggleMiniRecorderShortcut {
-            KeyboardShortcuts.setShortcut(shortcut, for: .toggleMiniRecorder)
+            ShortcutStore.setShortcut(shortcut.shortcut, for: .primaryRecording)
         }
         if let shortcut2 = general.toggleMiniRecorderShortcut2 {
-            KeyboardShortcuts.setShortcut(shortcut2, for: .toggleMiniRecorder2)
+            ShortcutStore.setShortcut(shortcut2.shortcut, for: .secondaryRecording)
         }
         if let pasteShortcut = general.pasteLastTranscriptionShortcut {
-            KeyboardShortcuts.setShortcut(pasteShortcut, for: .pasteLastTranscription)
+            ShortcutStore.setShortcut(pasteShortcut.shortcut, for: .pasteLastTranscription)
         }
         if let pasteEnhancementShortcut = general.pasteLastEnhancementShortcut {
-            KeyboardShortcuts.setShortcut(pasteEnhancementShortcut, for: .pasteLastEnhancement)
+            ShortcutStore.setShortcut(pasteEnhancementShortcut.shortcut, for: .pasteLastEnhancement)
         }
         if let retryShortcut = general.retryLastTranscriptionShortcut {
-            KeyboardShortcuts.setShortcut(retryShortcut, for: .retryLastTranscription)
+            ShortcutStore.setShortcut(retryShortcut.shortcut, for: .retryLastTranscription)
         }
         if let cancelShortcut = general.cancelRecorderShortcut {
-            KeyboardShortcuts.setShortcut(cancelShortcut, for: .cancelRecorder)
+            ShortcutStore.setShortcut(cancelShortcut.shortcut, for: .cancelRecorder)
         }
         if let historyShortcut = general.openHistoryWindowShortcut {
-            KeyboardShortcuts.setShortcut(historyShortcut, for: .openHistoryWindow)
+            ShortcutStore.setShortcut(historyShortcut.shortcut, for: .openHistoryWindow)
         }
         if let dictionaryShortcut = general.quickAddToDictionaryShortcut {
-            KeyboardShortcuts.setShortcut(dictionaryShortcut, for: .quickAddToDictionary)
+            ShortcutStore.setShortcut(dictionaryShortcut.shortcut, for: .quickAddToDictionary)
         }
         if let enhancementShortcut = general.toggleEnhancementShortcut {
-            KeyboardShortcuts.setShortcut(enhancementShortcut, for: .toggleEnhancement)
+            ShortcutStore.setShortcut(enhancementShortcut.shortcut, for: .toggleEnhancement)
         }
 
         if let hotkeyRaw = general.selectedHotkey1RawValue,

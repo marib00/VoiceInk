@@ -1,7 +1,6 @@
 import SwiftUI
 import AVFoundation
 import Cocoa
-import KeyboardShortcuts
 
 class PermissionManager: ObservableObject {
     @Published var audioPermissionStatus = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -77,7 +76,7 @@ class PermissionManager: ObservableObject {
     
     func checkKeyboardShortcut() {
         DispatchQueue.main.async {
-            self.isKeyboardShortcutSet = KeyboardShortcuts.getShortcut(for: .toggleMiniRecorder) != nil
+            self.isKeyboardShortcutSet = ShortcutStore.shortcut(for: .primaryRecording) != nil
         }
     }
 }
@@ -214,7 +213,7 @@ struct PermissionsView: View {
                         icon: "keyboard",
                         title: "Keyboard Shortcut",
                         description: "Set up a keyboard shortcut to use VoiceInk anywhere",
-                        isGranted: hotkeyManager.selectedHotkey1 != .none,
+                        isGranted: hotkeyManager.isShortcutConfigured,
                         buttonTitle: "Configure Shortcut",
                         buttonAction: {
                             NotificationCenter.default.post(

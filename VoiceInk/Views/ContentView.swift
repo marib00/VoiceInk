@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import KeyboardShortcuts
 import OSLog
 
 // ViewType enum with all cases
@@ -216,4 +215,3 @@ private struct SidebarItemView: View {
         .padding(.horizontal, 2)
     }
 }
-

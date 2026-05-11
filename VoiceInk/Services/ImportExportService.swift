@@ -1,7 +1,6 @@
 import Foundation
 import AppKit
 import UniformTypeIdentifiers
-import KeyboardShortcuts
 import LaunchAtLogin
 import SwiftData
 
@@ -124,17 +123,16 @@ class ImportExportService {
     }
 
     @MainActor
-    func exportSettings(enhancementService: AIEnhancementService, whisperPrompt: WhisperPrompt, hotkeyManager: HotkeyManager, menuBarManager: MenuBarManager, mediaController: MediaController, playbackController: PlaybackController, soundManager: SoundManager, recorderUIManager: RecorderUIManager, modelContext: ModelContext) {
+    func exportSettings(enhancementService: AIEnhancementService, hotkeyManager: HotkeyManager, menuBarManager: MenuBarManager, mediaController: MediaController, playbackController: PlaybackController, soundManager: SoundManager, recorderUIManager: RecorderUIManager, modelContext: ModelContext) {
         let powerModeManager = PowerModeManager.shared
         let emojiManager = EmojiManager.shared
 
         let exportablePrompts = enhancementService.customPrompts.filter { !$0.isPredefined }
 
         let powerConfigs = powerModeManager.configurations
-        let powerModeShortcuts = Dictionary(uniqueKeysWithValues: powerConfigs.compactMap { config -> (String, KeyboardShortcuts.Shortcut)? in
-            guard config.hotkeyShortcut != nil else { return nil }
-            guard let shortcut = KeyboardShortcuts.getShortcut(for: .powerMode(id: config.id)) else { return nil }
-            return (config.id.uuidString, shortcut)
+        let powerModeShortcuts = Dictionary(uniqueKeysWithValues: powerConfigs.compactMap { config -> (String, ShortcutBackup)? in
+            guard let shortcut = ShortcutStore.shortcut(for: .powerMode(config.id)) else { return nil }
+            return (config.id.uuidString, ShortcutBackup(shortcut))
         })
 
         // Export custom models
@@ -155,15 +153,15 @@ class ImportExportService {
         }
 
         let generalSettingsToExport = GeneralBackup(
-            toggleMiniRecorderShortcut: KeyboardShortcuts.getShortcut(for: .toggleMiniRecorder),
-            toggleMiniRecorderShortcut2: KeyboardShortcuts.getShortcut(for: .toggleMiniRecorder2),
-            pasteLastTranscriptionShortcut: KeyboardShortcuts.getShortcut(for: .pasteLastTranscription),
-            pasteLastEnhancementShortcut: KeyboardShortcuts.getShortcut(for: .pasteLastEnhancement),
-            retryLastTranscriptionShortcut: KeyboardShortcuts.getShortcut(for: .retryLastTranscription),
-            cancelRecorderShortcut: KeyboardShortcuts.getShortcut(for: .cancelRecorder),
-            openHistoryWindowShortcut: KeyboardShortcuts.getShortcut(for: .openHistoryWindow),
-            quickAddToDictionaryShortcut: KeyboardShortcuts.getShortcut(for: .quickAddToDictionary),
-            toggleEnhancementShortcut: KeyboardShortcuts.getShortcut(for: .toggleEnhancement),
+            toggleMiniRecorderShortcut: ShortcutStore.shortcut(for: .primaryRecording).map(ShortcutBackup.init),
+            toggleMiniRecorderShortcut2: ShortcutStore.shortcut(for: .secondaryRecording).map(ShortcutBackup.init),
+            pasteLastTranscriptionShortcut: ShortcutStore.shortcut(for: .pasteLastTranscription).map(ShortcutBackup.init),
+            pasteLastEnhancementShortcut: ShortcutStore.shortcut(for: .pasteLastEnhancement).map(ShortcutBackup.init),
+            retryLastTranscriptionShortcut: ShortcutStore.shortcut(for: .retryLastTranscription).map(ShortcutBackup.init),
+            cancelRecorderShortcut: ShortcutStore.shortcut(for: .cancelRecorder).map(ShortcutBackup.init),
+            openHistoryWindowShortcut: ShortcutStore.shortcut(for: .openHistoryWindow).map(ShortcutBackup.init),
+            quickAddToDictionaryShortcut: ShortcutStore.shortcut(for: .quickAddToDictionary).map(ShortcutBackup.init),
+            toggleEnhancementShortcut: ShortcutStore.shortcut(for: .toggleEnhancement).map(ShortcutBackup.init),
             selectedHotkey1RawValue: hotkeyManager.selectedHotkey1.rawValue,
             selectedHotkey2RawValue: hotkeyManager.selectedHotkey2.rawValue,
             hotkeyMode1RawValue: hotkeyManager.hotkeyMode1.rawValue,
@@ -235,7 +233,7 @@ class ImportExportService {
     }
 
     @MainActor
-    func importSettings(enhancementService: AIEnhancementService, whisperPrompt: WhisperPrompt, hotkeyManager: HotkeyManager, menuBarManager: MenuBarManager, mediaController: MediaController, playbackController: PlaybackController, soundManager: SoundManager, recorderUIManager: RecorderUIManager, modelContext: ModelContext, transcriptionModelManager: TranscriptionModelManager) {
+    func importSettings(enhancementService: AIEnhancementService, hotkeyManager: HotkeyManager, menuBarManager: MenuBarManager, mediaController: MediaController, playbackController: PlaybackController, soundManager: SoundManager, recorderUIManager: RecorderUIManager, modelContext: ModelContext, transcriptionModelManager: TranscriptionModelManager) {
         let openPanel = NSOpenPanel()
         openPanel.allowedContentTypes = [UTType.json]
         openPanel.canChooseFiles = true
