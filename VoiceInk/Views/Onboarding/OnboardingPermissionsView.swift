@@ -30,7 +30,7 @@ struct OnboardingPermission: Identifiable {
 
 struct OnboardingPermissionsView: View {
     @Binding var hasCompletedOnboarding: Bool
-    @EnvironmentObject private var hotkeyManager: HotkeyManager
+    @EnvironmentObject private var recordingShortcutManager: RecordingShortcutManager
     @ObservedObject private var audioDeviceManager = AudioDeviceManager.shared
     @State private var currentPermissionIndex = 0
     @State private var permissionStates: [Bool] = [false, false, false, false, false]
@@ -198,7 +198,7 @@ struct OnboardingPermissionsView: View {
                             
                             // Keyboard shortcut recorder (only shown for keyboard shortcut step)
                             if permissions[currentPermissionIndex].type == .keyboardShortcut {
-                                hotkeyView { isConfigured in
+                                shortcutView { isConfigured in
                                     withAnimation {
                                         permissionStates[currentPermissionIndex] = isConfigured
                                         showAnimation = isConfigured
@@ -277,7 +277,7 @@ struct OnboardingPermissionsView: View {
         permissionStates[3] = CGPreflightScreenCaptureAccess()
         
         // Check keyboard shortcut
-        permissionStates[4] = hotkeyManager.isShortcutConfigured
+        permissionStates[4] = recordingShortcutManager.isShortcutConfigured
     }
     
     private func requestPermission() {
@@ -448,15 +448,15 @@ struct OnboardingPermissionsView: View {
     }
 
     @ViewBuilder
-    private func hotkeyView(onConfigured: @escaping (Bool) -> Void) -> some View {
+    private func shortcutView(onConfigured: @escaping (Bool) -> Void) -> some View {
         VStack(spacing: 12) {
             Text("Shortcut:")
                 .font(.system(size: 16, weight: .medium))
                 .foregroundColor(.white.opacity(0.8))
 
             ShortcutRecorder(action: .primaryRecording) {
-                hotkeyManager.selectedHotkey1 = .custom
-                hotkeyManager.updateShortcutStatus()
+                recordingShortcutManager.primaryRecordingShortcut = .custom
+                recordingShortcutManager.updateShortcutStatus()
                 onConfigured(ShortcutStore.shortcut(for: .primaryRecording) != nil)
             }
             .controlSize(.large)
@@ -465,7 +465,7 @@ struct OnboardingPermissionsView: View {
         .background(Color.white.opacity(0.05))
         .cornerRadius(12)
         .onAppear {
-            hotkeyManager.selectedHotkey1 = .custom
+            recordingShortcutManager.primaryRecordingShortcut = .custom
             onConfigured(ShortcutStore.shortcut(for: .primaryRecording) != nil)
         }
     }

@@ -3,7 +3,7 @@ import Foundation
 enum ShortcutStore {
     static let shortcutDidChange = Notification.Name("ShortcutStoreShortcutDidChange")
 
-    static func storedShortcut(for action: ShortcutAction) -> Shortcut? {
+    static func rawShortcut(for action: ShortcutAction) -> Shortcut? {
         shortcutData(for: action)
             .flatMap { try? JSONDecoder().decode(Shortcut.self, from: $0) }
     }
@@ -17,7 +17,7 @@ enum ShortcutStore {
             return nil
         }
 
-        return storedShortcut(for: action)
+        return rawShortcut(for: action)
     }
 
     static func setShortcut(_ shortcut: Shortcut?, for action: ShortcutAction) {

@@ -30,13 +30,13 @@ struct Shortcut: Codable, Equatable {
     var displayTokens: [String] {
         switch kind {
         case .key:
-            return modifierFlags.shortcutManagerDisplayTokens + [Self.keyName(for: keyCode)]
+            return modifierFlags.shortcutDisplayTokens + [Self.keyName(for: keyCode)]
         case .modifierOnly:
             if let sideSpecificName = Self.sideSpecificModifierName(for: keyCode, modifiers: modifierFlags) {
                 return [sideSpecificName]
             }
 
-            return modifierFlags.shortcutManagerDisplayTokens
+            return modifierFlags.shortcutDisplayTokens
         }
     }
 
@@ -66,7 +66,7 @@ struct Shortcut: Codable, Equatable {
         Self(
             kind: .key,
             keyCode: UInt16(shortcut.carbonKeyCode),
-            modifierFlags: .shortcutManagerFlags(fromCarbonModifiers: shortcut.carbonModifiers)
+            modifierFlags: .shortcutFlags(fromCarbonModifiers: shortcut.carbonModifiers)
         )
     }
 
@@ -115,7 +115,7 @@ struct Shortcut: Codable, Equatable {
     }
 
     static func modifierKeyCodeForSingleModifierEvent(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> UInt16? {
-        guard modifiers.shortcutManagerSingleModifierCount == 1, isModifierKeyCode(keyCode) else {
+        guard modifiers.shortcutSingleModifierCount == 1, isModifierKeyCode(keyCode) else {
             return nil
         }
 
@@ -123,7 +123,7 @@ struct Shortcut: Codable, Equatable {
     }
 
     static func normalizedModifierFlags(_ flags: NSEvent.ModifierFlags, forKeyCode keyCode: UInt16?) -> NSEvent.ModifierFlags {
-        var normalizedFlags = flags.shortcutManagerNormalized
+        var normalizedFlags = flags.shortcutNormalized
 
         if let keyCode, isFunctionKeyCode(keyCode) {
             normalizedFlags.remove(.function)
@@ -172,7 +172,7 @@ struct Shortcut: Codable, Equatable {
     ]
 
     private static func sideSpecificModifierName(for keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> String? {
-        guard modifiers.shortcutManagerSingleModifierCount == 1 else {
+        guard modifiers.shortcutSingleModifierCount == 1 else {
             return nil
         }
 
@@ -360,13 +360,13 @@ struct Shortcut: Codable, Equatable {
 }
 
 private extension NSEvent.ModifierFlags {
-    static let shortcutManagerRelevant: NSEvent.ModifierFlags = [.control, .option, .shift, .command, .function]
+    static let shortcutRelevant: NSEvent.ModifierFlags = [.control, .option, .shift, .command, .function]
 
-    var shortcutManagerNormalized: NSEvent.ModifierFlags {
-        intersection(Self.shortcutManagerRelevant)
+    var shortcutNormalized: NSEvent.ModifierFlags {
+        intersection(Self.shortcutRelevant)
     }
 
-    var shortcutManagerDisplayTokens: [String] {
+    var shortcutDisplayTokens: [String] {
         var tokens: [String] = []
 
         if contains(.control) {
@@ -392,7 +392,7 @@ private extension NSEvent.ModifierFlags {
         return tokens
     }
 
-    var shortcutManagerSingleModifierCount: Int {
+    var shortcutSingleModifierCount: Int {
         [
             NSEvent.ModifierFlags.control,
             .option,
@@ -402,33 +402,7 @@ private extension NSEvent.ModifierFlags {
         ].filter { contains($0) }.count
     }
 
-    var shortcutManagerCarbonModifiers: Int {
-        var carbonModifiers = 0
-
-        if contains(.control) {
-            carbonModifiers |= Int(controlKey)
-        }
-
-        if contains(.option) {
-            carbonModifiers |= Int(optionKey)
-        }
-
-        if contains(.shift) {
-            carbonModifiers |= Int(shiftKey)
-        }
-
-        if contains(.command) {
-            carbonModifiers |= Int(cmdKey)
-        }
-
-        if contains(.function) {
-            carbonModifiers |= 1 << 17
-        }
-
-        return carbonModifiers
-    }
-
-    static func shortcutManagerFlags(fromCarbonModifiers carbonModifiers: Int) -> NSEvent.ModifierFlags {
+    static func shortcutFlags(fromCarbonModifiers carbonModifiers: Int) -> NSEvent.ModifierFlags {
         var flags: NSEvent.ModifierFlags = []
 
         if carbonModifiers & Int(controlKey) != 0 {

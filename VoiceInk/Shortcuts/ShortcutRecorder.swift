@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import CoreGraphics
 import SwiftUI
 
 struct ShortcutRecorder: View {
@@ -153,15 +154,17 @@ final class ShortcutRecorderModel: ObservableObject {
     @Published var isRecording = false
     @Published var previewShortcut: Shortcut?
 
-    private var localMonitor: Any?
-    private var globalMonitor: Any?
+    private var eventTap: CFMachPort?
+    private var eventTapRunLoopSource: CFRunLoopSource?
     private var onCapture: ((Shortcut) -> Void)?
     private var activeAction: ShortcutAction?
     private var pendingModifierShortcut: Shortcut?
     private var peakModifierFlags: NSEvent.ModifierFlags = []
 
+    private static var hasRequestedListenEventAccess = false
+
     deinit {
-        removeMonitors()
+        removeRecordingEventTap()
     }
 
     func start(action: ShortcutAction, onCapture: @escaping (Shortcut) -> Void) {
@@ -172,27 +175,16 @@ final class ShortcutRecorderModel: ObservableObject {
         isRecording = true
         previewShortcut = nil
 
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
-            guard let self else {
-                return event
-            }
-
-            return self.handleRecordingEvent(event) ? nil : event
-        }
-
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
-            _ = self?.handleRecordingEvent(event)
+        guard installRecordingEventTap() else {
+            cancel()
+            showErrorNotification("Input Monitoring required to record shortcuts")
+            return
         }
     }
 
     func cancel() {
-        removeMonitors()
-        isRecording = false
-        previewShortcut = nil
-        onCapture = nil
-        activeAction = nil
-        pendingModifierShortcut = nil
-        peakModifierFlags = []
+        removeRecordingEventTap()
+        resetRecordingState()
     }
 
     private func finish(with shortcut: Shortcut) {
@@ -203,58 +195,129 @@ final class ShortcutRecorderModel: ObservableObject {
 
         if let validationError = ShortcutValidator.validationError(for: shortcut, action: activeAction) {
             cancel()
-            Task { @MainActor in
-                NotificationManager.shared.showNotification(
-                    title: validationError.notificationTitle(for: shortcut),
-                    type: .error
-                )
-            }
+            showErrorNotification(validationError.notificationTitle(for: shortcut))
             return
         }
 
         let capture = onCapture
-        removeMonitors()
-        isRecording = false
-        previewShortcut = nil
-        onCapture = nil
-        self.activeAction = nil
-        pendingModifierShortcut = nil
-        peakModifierFlags = []
+        removeRecordingEventTap()
+        resetRecordingState()
 
         ShortcutStore.setShortcut(shortcut, for: activeAction)
         capture?(shortcut)
     }
 
-    private func removeMonitors() {
-        if let localMonitor {
-            NSEvent.removeMonitor(localMonitor)
-            self.localMonitor = nil
-        }
+    private func resetRecordingState() {
+        isRecording = false
+        previewShortcut = nil
+        onCapture = nil
+        activeAction = nil
+        pendingModifierShortcut = nil
+        peakModifierFlags = []
+    }
 
-        if let globalMonitor {
-            NSEvent.removeMonitor(globalMonitor)
-            self.globalMonitor = nil
+    private func showErrorNotification(_ title: String) {
+        Task { @MainActor in
+            NotificationManager.shared.showNotification(
+                title: title,
+                type: .error
+            )
         }
     }
 
-    private func handleRecordingEvent(_ event: NSEvent) -> Bool {
+    private func installRecordingEventTap() -> Bool {
+        guard Self.hasListenEventAccess() else {
+            return false
+        }
+
+        let callback: CGEventTapCallBack = { _, type, event, userInfo in
+            guard let userInfo else {
+                return Unmanaged.passUnretained(event)
+            }
+
+            let recorder = Unmanaged<ShortcutRecorderModel>.fromOpaque(userInfo).takeUnretainedValue()
+
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                if let eventTap = recorder.eventTap {
+                    CGEvent.tapEnable(tap: eventTap, enable: true)
+                }
+                return Unmanaged.passUnretained(event)
+            }
+
+            let shouldSuppress = recorder.handleRecordingEvent(type: type, event: event)
+            return shouldSuppress ? nil : Unmanaged.passUnretained(event)
+        }
+
+        // NSEvent global monitors cannot suppress system shortcuts like Command-Space,
+        // so recording uses a short-lived active tap and removes it immediately after capture.
+        guard let eventTap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: Self.recordingEventMask,
+            callback: callback,
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
+        ) else {
+            return false
+        }
+
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0) else {
+            CFMachPortInvalidate(eventTap)
+            return false
+        }
+
+        self.eventTap = eventTap
+        eventTapRunLoopSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+        return true
+    }
+
+    private static func hasListenEventAccess() -> Bool {
+        if CGPreflightListenEventAccess() {
+            return true
+        }
+
+        guard !hasRequestedListenEventAccess else {
+            return false
+        }
+
+        hasRequestedListenEventAccess = true
+        return CGRequestListenEventAccess()
+    }
+
+    private func removeRecordingEventTap() {
+        if let eventTapRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), eventTapRunLoopSource, .commonModes)
+            self.eventTapRunLoopSource = nil
+        }
+
+        if let eventTap {
+            CFMachPortInvalidate(eventTap)
+            self.eventTap = nil
+        }
+    }
+
+    private func handleRecordingEvent(type: CGEventType, event: CGEvent) -> Bool {
         guard isRecording else {
             return false
         }
 
-        switch event.type {
+        let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+        let modifierFlags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
+
+        switch type {
         case .keyDown:
-            return handleKeyDown(event)
+            return handleKeyDown(keyCode: keyCode, modifierFlags: modifierFlags)
         case .flagsChanged:
-            return handleFlagsChanged(event)
+            return handleFlagsChanged(keyCode: keyCode, modifierFlags: modifierFlags)
         default:
             return false
         }
     }
 
-    private func handleKeyDown(_ event: NSEvent) -> Bool {
-        let keyCode = event.keyCode
-        let modifiers = Shortcut.normalizedModifierFlags(event.modifierFlags, forKeyCode: keyCode)
+    private func handleKeyDown(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> Bool {
+        let modifiers = Shortcut.normalizedModifierFlags(modifierFlags, forKeyCode: keyCode)
 
         if keyCode == UInt16(kVK_Escape), modifiers.isEmpty {
             cancel()
@@ -271,19 +334,19 @@ final class ShortcutRecorderModel: ObservableObject {
         return true
     }
 
-    private func handleFlagsChanged(_ event: NSEvent) -> Bool {
-        let modifiers = Shortcut.normalizedModifierFlags(event.modifierFlags, forKeyCode: event.keyCode)
+    private func handleFlagsChanged(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> Bool {
+        let modifiers = Shortcut.normalizedModifierFlags(modifierFlags, forKeyCode: keyCode)
 
         if modifiers.isEmpty,
-           Shortcut.isFunctionKeyCode(event.keyCode),
-           Shortcut.normalizedModifierFlags(event.modifierFlags, forKeyCode: nil).contains(.function) {
+           Shortcut.isFunctionKeyCode(keyCode),
+           Shortcut.normalizedModifierFlags(modifierFlags, forKeyCode: nil).contains(.function) {
             return true
         }
 
         if !modifiers.isEmpty {
             peakModifierFlags.formUnion(modifiers)
             let singleModifierKeyCode = Shortcut.modifierKeyCodeForSingleModifierEvent(
-                keyCode: event.keyCode,
+                keyCode: keyCode,
                 modifiers: peakModifierFlags
             )
             let shortcut = Shortcut.modifierOnly(
@@ -301,5 +364,12 @@ final class ShortcutRecorderModel: ObservableObject {
         }
 
         return true
+    }
+
+    private static let recordingEventMask: CGEventMask = [
+        CGEventType.keyDown,
+        CGEventType.flagsChanged
+    ].reduce(CGEventMask(0)) { mask, type in
+        mask | (CGEventMask(1) << Int(type.rawValue))
     }
 }

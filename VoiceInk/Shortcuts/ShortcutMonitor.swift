@@ -27,7 +27,7 @@ final class ShortcutMonitor {
     }
 
     @discardableResult
-    func configure(
+    func start(
         shortcuts: [ShortcutAction: Shortcut],
         onKeyDown: @escaping (ShortcutAction, TimeInterval) -> Void,
         onKeyUp: @escaping (ShortcutAction, TimeInterval) -> Void
@@ -152,7 +152,7 @@ final class ShortcutMonitor {
             }
 
             if state.shortcut.isModifierOnly {
-                let suppressModifierEvent = handleModifierOnlyShortcut(
+                handleModifierOnlyShortcut(
                     action: action,
                     state: state,
                     kind: kind,
@@ -160,7 +160,6 @@ final class ShortcutMonitor {
                     modifierFlags: modifierFlags,
                     eventTime: eventTime
                 )
-                shouldSuppress = shouldSuppress || suppressModifierEvent
                 continue
             }
 
@@ -236,11 +235,11 @@ final class ShortcutMonitor {
         keyCode: UInt16,
         modifierFlags: NSEvent.ModifierFlags,
         eventTime: TimeInterval
-    ) -> Bool {
+    ) {
         var state = state
 
         guard kind == .flagsChanged else {
-            return false
+            return
         }
 
         if state.isDown {
@@ -250,7 +249,7 @@ final class ShortcutMonitor {
                 dispatchKeyUp(for: action, eventTime: eventTime)
             }
 
-            return false
+            return
         }
 
         if state.shortcut.matchesModifierEvent(keyCode: keyCode, modifierFlags: modifierFlags) {
@@ -258,8 +257,6 @@ final class ShortcutMonitor {
             shortcuts[action] = state
             dispatchKeyDown(for: action, eventTime: eventTime)
         }
-
-        return false
     }
 
     private func dispatchKeyDown(for action: ShortcutAction, eventTime: TimeInterval) {

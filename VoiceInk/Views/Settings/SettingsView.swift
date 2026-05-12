@@ -7,7 +7,7 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var updaterViewModel: UpdaterViewModel
     @EnvironmentObject private var menuBarManager: MenuBarManager
-    @EnvironmentObject private var hotkeyManager: HotkeyManager
+    @EnvironmentObject private var recordingShortcutManager: RecordingShortcutManager
     @EnvironmentObject private var recorderUIManager: RecorderUIManager
     @EnvironmentObject private var transcriptionModelManager: TranscriptionModelManager
     @EnvironmentObject private var enhancementService: AIEnhancementService
@@ -37,27 +37,27 @@ struct SettingsView: View {
                 LabeledContent("Shortcut 1") {
                     HStack(spacing: 8) {
                         Spacer()
-                        hotkeyModePicker(binding: $hotkeyManager.hotkeyMode1)
+                        shortcutModePicker(binding: $recordingShortcutManager.primaryRecordingShortcutMode)
                         ShortcutRecorder(action: .primaryRecording) {
-                            hotkeyManager.selectedHotkey1 = .custom
-                            hotkeyManager.updateShortcutStatus()
+                            recordingShortcutManager.primaryRecordingShortcut = .custom
+                            recordingShortcutManager.updateShortcutStatus()
                         }
                         .controlSize(.small)
                     }
                 }
 
-                if hotkeyManager.selectedHotkey2 != .none {
+                if recordingShortcutManager.secondaryRecordingShortcut != .none {
                     LabeledContent("Shortcut 2") {
                         HStack(spacing: 8) {
                             Spacer()
-                            hotkeyModePicker(binding: $hotkeyManager.hotkeyMode2)
+                            shortcutModePicker(binding: $recordingShortcutManager.secondaryRecordingShortcutMode)
                             ShortcutRecorder(action: .secondaryRecording) {
-                                hotkeyManager.selectedHotkey2 = .custom
-                                hotkeyManager.updateShortcutStatus()
+                                recordingShortcutManager.secondaryRecordingShortcut = .custom
+                                recordingShortcutManager.updateShortcutStatus()
                             }
                             .controlSize(.small)
                             Button {
-                                withAnimation { hotkeyManager.selectedHotkey2 = .none }
+                                withAnimation { recordingShortcutManager.secondaryRecordingShortcut = .none }
                             } label: {
                                 Image(systemName: "minus.circle.fill")
                                     .foregroundColor(.secondary)
@@ -67,9 +67,9 @@ struct SettingsView: View {
                     }
                 }
 
-                if hotkeyManager.selectedHotkey2 == .none {
+                if recordingShortcutManager.secondaryRecordingShortcut == .none {
                     Button("Add Second Shortcut") {
-                        withAnimation { hotkeyManager.selectedHotkey2 = .custom }
+                        withAnimation { recordingShortcutManager.secondaryRecordingShortcut = .custom }
                     }
                 }
             } header: {
@@ -80,21 +80,21 @@ struct SettingsView: View {
             Section("Additional Shortcuts") {
                 LabeledContent("Paste Last Transcription (Original)") {
                     ShortcutRecorder(action: .pasteLastTranscription) {
-                        hotkeyManager.updateShortcutStatus()
+                        recordingShortcutManager.updateShortcutStatus()
                     }
                         .controlSize(.small)
                 }
 
                 LabeledContent("Paste Last Transcription (Enhanced)") {
                     ShortcutRecorder(action: .pasteLastEnhancement) {
-                        hotkeyManager.updateShortcutStatus()
+                        recordingShortcutManager.updateShortcutStatus()
                     }
                         .controlSize(.small)
                 }
 
                 LabeledContent("Retry Last Transcription") {
                     ShortcutRecorder(action: .retryLastTranscription) {
-                        hotkeyManager.updateShortcutStatus()
+                        recordingShortcutManager.updateShortcutStatus()
                     }
                         .controlSize(.small)
                 }
@@ -122,12 +122,12 @@ struct SettingsView: View {
                 // Middle-Click
                 ExpandableSettingsRow(
                     isExpanded: $isMiddleClickExpanded,
-                    isEnabled: $hotkeyManager.isMiddleClickToggleEnabled,
+                    isEnabled: $recordingShortcutManager.isMiddleClickToggleEnabled,
                     label: "Middle-Click Recording"
                 ) {
                     LabeledContent("Activation Delay") {
                         HStack {
-                            TextField("", value: $hotkeyManager.middleClickActivationDelay, formatter: {
+                            TextField("", value: $recordingShortcutManager.middleClickActivationDelay, formatter: {
                                 let formatter = NumberFormatter()
                                 formatter.minimum = 0
                                 return formatter
@@ -257,7 +257,7 @@ struct SettingsView: View {
                     Button("Export") {
                         ImportExportService.shared.exportSettings(
                             enhancementService: enhancementService,
-                            hotkeyManager: hotkeyManager,
+                            recordingShortcutManager: recordingShortcutManager,
                             menuBarManager: menuBarManager,
                             mediaController: mediaController,
                             playbackController: playbackController,
@@ -272,7 +272,7 @@ struct SettingsView: View {
                     Button("Import") {
                         ImportExportService.shared.importSettings(
                             enhancementService: enhancementService,
-                            hotkeyManager: hotkeyManager,
+                            recordingShortcutManager: recordingShortcutManager,
                             menuBarManager: menuBarManager,
                             mediaController: mediaController,
                             playbackController: playbackController,
@@ -310,9 +310,9 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
-    private func hotkeyModePicker(binding: Binding<HotkeyManager.HotkeyMode>) -> some View {
+    private func shortcutModePicker(binding: Binding<RecordingShortcutManager.Mode>) -> some View {
         Picker("", selection: binding) {
-            ForEach(HotkeyManager.HotkeyMode.allCases, id: \.self) { mode in
+            ForEach(RecordingShortcutManager.Mode.allCases, id: \.self) { mode in
                 Text(mode.displayName).tag(mode)
             }
         }

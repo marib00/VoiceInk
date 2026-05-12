@@ -67,8 +67,8 @@ struct CustomModelBackup: Codable {
 }
 
 struct GeneralBackup: Codable {
-    let toggleMiniRecorderShortcut: ShortcutBackup?
-    let toggleMiniRecorderShortcut2: ShortcutBackup?
+    let primaryRecordingShortcut: ShortcutBackup?
+    let secondaryRecordingShortcut: ShortcutBackup?
     let pasteLastTranscriptionShortcut: ShortcutBackup?
     let pasteLastEnhancementShortcut: ShortcutBackup?
     let retryLastTranscriptionShortcut: ShortcutBackup?
@@ -76,10 +76,10 @@ struct GeneralBackup: Codable {
     let openHistoryWindowShortcut: ShortcutBackup?
     let quickAddToDictionaryShortcut: ShortcutBackup?
     let toggleEnhancementShortcut: ShortcutBackup?
-    let selectedHotkey1RawValue: String?
-    let selectedHotkey2RawValue: String?
-    let hotkeyMode1RawValue: String?
-    let hotkeyMode2RawValue: String?
+    let primaryRecordingShortcutRawValue: String?
+    let secondaryRecordingShortcutRawValue: String?
+    let primaryRecordingShortcutModeRawValue: String?
+    let secondaryRecordingShortcutModeRawValue: String?
     let isMiddleClickToggleEnabled: Bool?
     let middleClickActivationDelay: Int?
     let launchAtLoginEnabled: Bool?

@@ -16,7 +16,7 @@ enum ShortcutAction: Hashable {
     case miniRecorderPowerMode(Int)
 
     var userDefaultsKey: String {
-        "ShortcutManager_\(storageName)"
+        "Shortcut_\(storageName)"
     }
 
     var isStored: Bool {
@@ -31,9 +31,9 @@ enum ShortcutAction: Hashable {
     var storageName: String {
         switch self {
         case .primaryRecording:
-            return "primary"
+            return "primaryRecording"
         case .secondaryRecording:
-            return "secondary"
+            return "secondaryRecording"
         case .pasteLastTranscription:
             return "pasteLastTranscription"
         case .pasteLastEnhancement:
@@ -94,7 +94,7 @@ enum ShortcutAction: Hashable {
         }
     }
 
-    static let appWideActions: [Self] = [
+    static let globalUtilityActions: [Self] = [
         .pasteLastTranscription,
         .pasteLastEnhancement,
         .retryLastTranscription,
@@ -107,7 +107,7 @@ enum ShortcutAction: Hashable {
         .toggleEnhancement
     ]
 
-    static let legacyStaticActions: [Self] = [
+    static let legacyKeyboardShortcutActions: [Self] = [
         .primaryRecording,
         .secondaryRecording,
         .pasteLastTranscription,

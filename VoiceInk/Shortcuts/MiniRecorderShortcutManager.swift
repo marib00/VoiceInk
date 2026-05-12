@@ -8,11 +8,11 @@ class MiniRecorderShortcutManager: ObservableObject {
     private var recorderUIManager: RecorderUIManager
     private var visibilityTask: Task<Void, Never>?
     private var shortcutChangeObserver: NSObjectProtocol?
-    private let visibleShortcutMonitor = ShortcutMonitor()
+    private let visibleRecorderMonitor = ShortcutMonitor()
     
     // Double-tap Escape handling
-    private var escFirstPressTime: Date? = nil
-    private let escSecondPressThreshold: TimeInterval = 1.5
+    private var firstEscapePressTime: Date? = nil
+    private let escapeDoublePressThreshold: TimeInterval = 1.5
     private var escapeTimeoutTask: Task<Void, Never>?
     
     init(engine: VoiceInkEngine, recorderUIManager: RecorderUIManager) {
@@ -36,7 +36,7 @@ class MiniRecorderShortcutManager: ObservableObject {
             }
 
             Task { @MainActor in
-                self?.refreshVisibleShortcutState()
+                self?.refreshVisibleShortcuts()
             }
         }
     }
@@ -45,9 +45,9 @@ class MiniRecorderShortcutManager: ObservableObject {
         visibilityTask = Task { @MainActor in
             for await isVisible in recorderUIManager.$isMiniRecorderVisible.values {
                 if isVisible {
-                    refreshVisibleShortcutState()
+                    refreshVisibleShortcuts()
                 } else {
-                    visibleShortcutMonitor.stop()
+                    visibleRecorderMonitor.stop()
                     resetEscapeState()
                 }
             }
@@ -60,14 +60,14 @@ class MiniRecorderShortcutManager: ObservableObject {
     }
 
     private func resetEscapeState() {
-        escFirstPressTime = nil
+        firstEscapePressTime = nil
         escapeTimeoutTask?.cancel()
         escapeTimeoutTask = nil
     }
     
-    private func refreshVisibleShortcutState() {
+    private func refreshVisibleShortcuts() {
         guard recorderUIManager.isMiniRecorderVisible else {
-            visibleShortcutMonitor.stop()
+            visibleRecorderMonitor.stop()
             resetEscapeState()
             return
         }
@@ -94,18 +94,18 @@ class MiniRecorderShortcutManager: ObservableObject {
             }
         }
 
-        visibleShortcutMonitor.configure(
+        visibleRecorderMonitor.start(
             shortcuts: shortcuts,
             onKeyDown: { [weak self] action, _ in
                 Task { @MainActor in
-                    await self?.handleVisibleShortcut(action)
+                    await self?.handleMiniRecorderShortcut(action)
                 }
             },
             onKeyUp: { _, _ in }
         )
     }
 
-    private func handleVisibleShortcut(_ action: ShortcutAction) async {
+    private func handleMiniRecorderShortcut(_ action: ShortcutAction) async {
         guard recorderUIManager.isMiniRecorderVisible else { return }
 
         switch action {
@@ -130,24 +130,24 @@ class MiniRecorderShortcutManager: ObservableObject {
         guard ShortcutStore.shortcut(for: .cancelRecorder) == nil else { return }
 
         let now = Date()
-        if let firstTime = escFirstPressTime,
-           now.timeIntervalSince(firstTime) <= escSecondPressThreshold {
+        if let firstTime = firstEscapePressTime,
+           now.timeIntervalSince(firstTime) <= escapeDoublePressThreshold {
             resetEscapeState()
             await recorderUIManager.cancelRecording()
             return
         }
 
-        escFirstPressTime = now
+        firstEscapePressTime = now
         SoundManager.shared.playEscSound()
         NotificationManager.shared.showNotification(
             title: "Press ESC again to cancel recording",
             type: .info,
-            duration: escSecondPressThreshold
+            duration: escapeDoublePressThreshold
         )
         escapeTimeoutTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64((self?.escSecondPressThreshold ?? 1.5) * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64((self?.escapeDoublePressThreshold ?? 1.5) * 1_000_000_000))
             await MainActor.run {
-                self?.escFirstPressTime = nil
+                self?.firstEscapePressTime = nil
             }
         }
     }
@@ -187,7 +187,7 @@ class MiniRecorderShortcutManager: ObservableObject {
 
         visibilityTask?.cancel()
         MainActor.assumeIsolated {
-            visibleShortcutMonitor.stop()
+            visibleRecorderMonitor.stop()
             resetEscapeState()
         }
     }

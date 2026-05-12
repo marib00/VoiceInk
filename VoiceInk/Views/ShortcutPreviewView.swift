@@ -1,11 +1,11 @@
 import SwiftUI
 
-struct KeyboardShortcutView: View {
+struct ShortcutPreviewView: View {
     private let components: [String]?
     @Environment(\.colorScheme) private var colorScheme
 
-    init(managedShortcut: Shortcut?) {
-        self.components = managedShortcut?.displayTokens
+    init(shortcut: Shortcut?) {
+        self.components = shortcut?.displayTokens
     }
     
     var body: some View {
@@ -149,8 +149,8 @@ struct KeyCapView: View {
 
 #Preview {
     VStack(spacing: 20) {
-        KeyboardShortcutView(managedShortcut: ShortcutStore.shortcut(for: .primaryRecording))
-        KeyboardShortcutView(managedShortcut: nil)
+        ShortcutPreviewView(shortcut: ShortcutStore.shortcut(for: .primaryRecording))
+        ShortcutPreviewView(shortcut: nil)
     }
     .padding()
 } 

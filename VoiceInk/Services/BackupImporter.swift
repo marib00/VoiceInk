@@ -24,7 +24,7 @@ enum BackupImporter {
     private static let keyLowercaseTranscription = "LowercaseTranscription"
 
     @MainActor
-    static func apply(_ backup: BackupFile, categories: Set<BackupCategory>, enhancementService: AIEnhancementService, hotkeyManager: HotkeyManager, menuBarManager: MenuBarManager, mediaController: MediaController, playbackController: PlaybackController, soundManager: SoundManager, recorderUIManager: RecorderUIManager, modelContext: ModelContext, transcriptionModelManager: TranscriptionModelManager) throws {
+    static func apply(_ backup: BackupFile, categories: Set<BackupCategory>, enhancementService: AIEnhancementService, recordingShortcutManager: RecordingShortcutManager, menuBarManager: MenuBarManager, mediaController: MediaController, playbackController: PlaybackController, soundManager: SoundManager, recorderUIManager: RecorderUIManager, modelContext: ModelContext, transcriptionModelManager: TranscriptionModelManager) throws {
         if categories.contains(.dictionary) {
             try importDictionary(from: backup, modelContext: modelContext)
         }
@@ -32,7 +32,7 @@ enum BackupImporter {
         if categories.contains(.general) {
             importGeneral(
                 backup.generalSettings,
-                hotkeyManager: hotkeyManager,
+                recordingShortcutManager: recordingShortcutManager,
                 menuBarManager: menuBarManager,
                 mediaController: mediaController,
                 playbackController: playbackController,
@@ -86,17 +86,19 @@ enum BackupImporter {
     }
 
     @MainActor
-    private static func importGeneral(_ general: GeneralBackup?, hotkeyManager: HotkeyManager, menuBarManager: MenuBarManager, mediaController: MediaController, playbackController: PlaybackController, soundManager: SoundManager, recorderUIManager: RecorderUIManager) {
+    private static func importGeneral(_ general: GeneralBackup?, recordingShortcutManager: RecordingShortcutManager, menuBarManager: MenuBarManager, mediaController: MediaController, playbackController: PlaybackController, soundManager: SoundManager, recorderUIManager: RecorderUIManager) {
         guard let general else {
             print("No general settings found in the imported file.")
             return
         }
 
-        if let shortcut = general.toggleMiniRecorderShortcut {
+        if let shortcut = general.primaryRecordingShortcut {
             ShortcutStore.setShortcut(shortcut.shortcut, for: .primaryRecording)
+            recordingShortcutManager.primaryRecordingShortcut = .custom
         }
-        if let shortcut2 = general.toggleMiniRecorderShortcut2 {
+        if let shortcut2 = general.secondaryRecordingShortcut {
             ShortcutStore.setShortcut(shortcut2.shortcut, for: .secondaryRecording)
+            recordingShortcutManager.secondaryRecordingShortcut = .custom
         }
         if let pasteShortcut = general.pasteLastTranscriptionShortcut {
             ShortcutStore.setShortcut(pasteShortcut.shortcut, for: .pasteLastTranscription)
@@ -120,27 +122,27 @@ enum BackupImporter {
             ShortcutStore.setShortcut(enhancementShortcut.shortcut, for: .toggleEnhancement)
         }
 
-        if let hotkeyRaw = general.selectedHotkey1RawValue,
-           let hotkey = HotkeyManager.HotkeyOption(rawValue: hotkeyRaw) {
-            hotkeyManager.selectedHotkey1 = hotkey
+        if let shortcutRawValue = general.primaryRecordingShortcutRawValue,
+           let shortcut = RecordingShortcutManager.ShortcutSelection(rawValue: shortcutRawValue) {
+            recordingShortcutManager.primaryRecordingShortcut = shortcut
         }
-        if let hotkeyRaw2 = general.selectedHotkey2RawValue,
-           let hotkey2 = HotkeyManager.HotkeyOption(rawValue: hotkeyRaw2) {
-            hotkeyManager.selectedHotkey2 = hotkey2
+        if let secondaryShortcutRawValue = general.secondaryRecordingShortcutRawValue,
+           let secondaryShortcut = RecordingShortcutManager.ShortcutSelection(rawValue: secondaryShortcutRawValue) {
+            recordingShortcutManager.secondaryRecordingShortcut = secondaryShortcut
         }
-        if let hotkeyModeRaw = general.hotkeyMode1RawValue,
-           let mode = HotkeyManager.HotkeyMode(rawValue: hotkeyModeRaw) {
-            hotkeyManager.hotkeyMode1 = mode
+        if let modeRawValue = general.primaryRecordingShortcutModeRawValue,
+           let mode = RecordingShortcutManager.Mode(rawValue: modeRawValue) {
+            recordingShortcutManager.primaryRecordingShortcutMode = mode
         }
-        if let hotkeyModeRaw2 = general.hotkeyMode2RawValue,
-           let mode2 = HotkeyManager.HotkeyMode(rawValue: hotkeyModeRaw2) {
-            hotkeyManager.hotkeyMode2 = mode2
+        if let secondaryModeRawValue = general.secondaryRecordingShortcutModeRawValue,
+           let secondaryMode = RecordingShortcutManager.Mode(rawValue: secondaryModeRawValue) {
+            recordingShortcutManager.secondaryRecordingShortcutMode = secondaryMode
         }
         if let middleClickEnabled = general.isMiddleClickToggleEnabled {
-            hotkeyManager.isMiddleClickToggleEnabled = middleClickEnabled
+            recordingShortcutManager.isMiddleClickToggleEnabled = middleClickEnabled
         }
         if let middleClickDelay = general.middleClickActivationDelay {
-            hotkeyManager.middleClickActivationDelay = middleClickDelay
+            recordingShortcutManager.middleClickActivationDelay = middleClickDelay
         }
         if let launch = general.launchAtLoginEnabled {
             LaunchAtLogin.isEnabled = launch

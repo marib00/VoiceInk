@@ -9,7 +9,7 @@ class PowerModeShortcutManager {
     init(engine: VoiceInkEngine) {
         self.engine = engine
 
-        setupPowerModeHotkeys()
+        refreshPowerModeShortcuts()
 
         shortcutChangeObserver = NotificationCenter.default.addObserver(
             forName: ShortcutStore.shortcutDidChange,
@@ -24,7 +24,7 @@ class PowerModeShortcutManager {
             }
 
             Task { @MainActor in
-                self?.setupPowerModeHotkeys()
+                self?.refreshPowerModeShortcuts()
             }
         }
 
@@ -48,11 +48,11 @@ class PowerModeShortcutManager {
 
     @objc private func powerModeShortcutAvailabilityDidChange() {
         Task { @MainActor in
-            setupPowerModeHotkeys()
+            refreshPowerModeShortcuts()
         }
     }
 
-    private func setupPowerModeHotkeys() {
+    private func refreshPowerModeShortcuts() {
         guard UserDefaults.standard.bool(forKey: "powerModeUIFlag") else {
             shortcutMonitor.stop()
             return
@@ -65,21 +65,21 @@ class PowerModeShortcutManager {
             }
         }
 
-        shortcutMonitor.configure(
+        shortcutMonitor.start(
             shortcuts: shortcuts,
             onKeyDown: { _, _ in },
             onKeyUp: { [weak self] action, _ in
                 Task { @MainActor in
                     guard case .powerMode(let powerModeId) = action else { return }
-                    await self?.handlePowerModeHotkey(powerModeId: powerModeId)
+                    await self?.handlePowerModeShortcut(powerModeId: powerModeId)
                 }
             }
         )
     }
 
-    private func handlePowerModeHotkey(powerModeId: UUID) async {
+    private func handlePowerModeShortcut(powerModeId: UUID) async {
         guard let engine = engine,
-              canProcessHotkeyAction(engine: engine) else { return }
+              canHandleShortcutAction(engine: engine) else { return }
 
         guard let config = PowerModeManager.shared.getConfiguration(with: powerModeId),
               config.isEnabled,
@@ -90,7 +90,7 @@ class PowerModeShortcutManager {
         await engine.recorderUIManager?.toggleMiniRecorder(powerModeId: powerModeId)
     }
 
-    private func canProcessHotkeyAction(engine: VoiceInkEngine) -> Bool {
+    private func canHandleShortcutAction(engine: VoiceInkEngine) -> Bool {
         engine.recordingState != .transcribing &&
         engine.recordingState != .enhancing &&
         engine.recordingState != .busy

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct MetricsSetupView: View {
     @EnvironmentObject private var transcriptionModelManager: TranscriptionModelManager
-    @EnvironmentObject private var hotkeyManager: HotkeyManager
+    @EnvironmentObject private var recordingShortcutManager: RecordingShortcutManager
     @State private var isAccessibilityEnabled = AXIsProcessTrusted()
     @State private var isScreenRecordingEnabled = CGPreflightScreenCaptureAccess()
     
@@ -67,7 +67,7 @@ struct MetricsSetupView: View {
         switch index {
         case 0:
             stepInfo = (
-                isCompleted: hotkeyManager.isShortcutConfigured,
+                isCompleted: recordingShortcutManager.isShortcutConfigured,
                 icon: "command",
                 title: "Set Keyboard Shortcut",
                 description: "Use VoiceInk anywhere with a shortcut."
@@ -149,7 +149,7 @@ struct MetricsSetupView: View {
             openModelManagement()
         } else {
             // Handle different permission requests based on which one is missing
-            if !hotkeyManager.isShortcutConfigured {
+            if !recordingShortcutManager.isShortcutConfigured {
                 openSettings()
             } else if !AXIsProcessTrusted() {
                 if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
@@ -166,7 +166,7 @@ struct MetricsSetupView: View {
     }
     
     private func getActionButtonTitle() -> String {
-        if !hotkeyManager.isShortcutConfigured {
+        if !recordingShortcutManager.isShortcutConfigured {
             return "Configure Shortcut"
         } else if !AXIsProcessTrusted() {
             return "Enable Accessibility"
@@ -185,7 +185,7 @@ struct MetricsSetupView: View {
     }
     
     private var isShortcutAndAccessibilityGranted: Bool {
-        hotkeyManager.isShortcutConfigured &&
+        recordingShortcutManager.isShortcutConfigured &&
         AXIsProcessTrusted() && 
         CGPreflightScreenCaptureAccess()
     }

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct OnboardingTutorialView: View {
     @Binding var hasCompletedOnboarding: Bool
-    @EnvironmentObject private var hotkeyManager: HotkeyManager
+    @EnvironmentObject private var recordingShortcutManager: RecordingShortcutManager
     @State private var scale: CGFloat = 0.8
     @State private var opacity: CGFloat = 0
     @State private var transcribedText: String = ""
@@ -41,7 +41,7 @@ struct OnboardingTutorialView: View {
                                 
                             }
                             
-                            KeyboardShortcutView(managedShortcut: ShortcutStore.shortcut(for: .primaryRecording))
+                            ShortcutPreviewView(shortcut: ShortcutStore.shortcut(for: .primaryRecording))
                                 .scaleEffect(1.2)
                         }
                         

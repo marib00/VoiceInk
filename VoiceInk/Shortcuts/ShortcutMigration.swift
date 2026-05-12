@@ -36,12 +36,12 @@ enum ShortcutMigration {
     }
 
     static func migrateLegacyKeyboardShortcutsIfNeeded() {
-        let migrationKey = "ShortcutManager_LegacyKeyboardShortcutsMigrated"
+        let migrationKey = "Shortcut_LegacyKeyboardShortcutsMigrated"
         guard !UserDefaults.standard.bool(forKey: migrationKey) else {
             return
         }
 
-        for action in ShortcutAction.legacyStaticActions {
+        for action in ShortcutAction.legacyKeyboardShortcutActions {
             migrateLegacyKeyboardShortcut(for: action)
         }
 
@@ -52,30 +52,79 @@ enum ShortcutMigration {
         UserDefaults.standard.set(true, forKey: migrationKey)
     }
 
-    static func shortcutSelection(
-        forKey userDefaultsKey: String,
+    static func migrateShortcutSelection(
         action: ShortcutAction,
         allowsNone: Bool
-    ) -> HotkeyManager.HotkeyOption {
-        guard
-            let storedValue = UserDefaults.standard.string(forKey: userDefaultsKey),
-            !storedValue.isEmpty
-        else {
-            if !allowsNone {
-                migrateDefaultPrimaryShortcutIfNeeded(for: action)
-                UserDefaults.standard.set(HotkeyManager.HotkeyOption.custom.rawValue, forKey: userDefaultsKey)
-                return .custom
-            }
+    ) -> RecordingShortcutManager.ShortcutSelection {
+        let userDefaultsKey = recordingShortcutKey(for: action)
+        let legacyKey = legacyRecordingShortcutKey(for: action)
 
-            return .none
+        if let storedValue = nonEmptyString(forKey: userDefaultsKey) {
+            return shortcutSelection(
+                from: storedValue,
+                savingTo: userDefaultsKey,
+                removing: nil,
+                action: action,
+                allowsNone: allowsNone
+            )
         }
 
-        if storedValue == HotkeyManager.HotkeyOption.custom.rawValue {
+        if let legacyValue = nonEmptyString(forKey: legacyKey) {
+            return shortcutSelection(
+                from: legacyValue,
+                savingTo: userDefaultsKey,
+                removing: legacyKey,
+                action: action,
+                allowsNone: allowsNone
+            )
+        }
+
+        if !allowsNone {
+            migrateDefaultPrimaryShortcutIfNeeded(for: action)
+            UserDefaults.standard.set(RecordingShortcutManager.ShortcutSelection.custom.rawValue, forKey: userDefaultsKey)
             return .custom
         }
 
-        if storedValue == HotkeyManager.HotkeyOption.none.rawValue {
-            return allowsNone ? .none : .custom
+        return .none
+    }
+
+    static func migrateShortcutMode(
+        for action: ShortcutAction
+    ) -> RecordingShortcutManager.Mode {
+        let userDefaultsKey = recordingShortcutModeKey(for: action)
+        let legacyKey = legacyRecordingShortcutModeKey(for: action)
+
+        if let storedValue = nonEmptyString(forKey: userDefaultsKey),
+           let mode = RecordingShortcutManager.Mode(rawValue: storedValue) {
+            return mode
+        }
+
+        if let legacyValue = nonEmptyString(forKey: legacyKey),
+           let mode = RecordingShortcutManager.Mode(rawValue: legacyValue) {
+            UserDefaults.standard.set(mode.rawValue, forKey: userDefaultsKey)
+            UserDefaults.standard.removeObject(forKey: legacyKey)
+            return mode
+        }
+
+        return .hybrid
+    }
+
+    private static func shortcutSelection(
+        from storedValue: String,
+        savingTo userDefaultsKey: String,
+        removing legacyKey: String?,
+        action: ShortcutAction,
+        allowsNone: Bool
+    ) -> RecordingShortcutManager.ShortcutSelection {
+        if storedValue == RecordingShortcutManager.ShortcutSelection.custom.rawValue {
+            saveShortcutSelection(.custom, forKey: userDefaultsKey, removing: legacyKey)
+            return .custom
+        }
+
+        if storedValue == RecordingShortcutManager.ShortcutSelection.none.rawValue {
+            let selection: RecordingShortcutManager.ShortcutSelection = allowsNone ? .none : .custom
+            saveShortcutSelection(selection, forKey: userDefaultsKey, removing: legacyKey)
+            return selection
         }
 
         if let shortcut = legacyPresetShortcut(for: storedValue) {
@@ -83,11 +132,25 @@ enum ShortcutMigration {
                 ShortcutStore.setShortcut(shortcut, for: action)
             }
 
-            UserDefaults.standard.set(HotkeyManager.HotkeyOption.custom.rawValue, forKey: userDefaultsKey)
+            saveShortcutSelection(.custom, forKey: userDefaultsKey, removing: legacyKey)
             return .custom
         }
 
-        return allowsNone ? .none : .custom
+        let selection: RecordingShortcutManager.ShortcutSelection = allowsNone ? .none : .custom
+        saveShortcutSelection(selection, forKey: userDefaultsKey, removing: legacyKey)
+        return selection
+    }
+
+    private static func saveShortcutSelection(
+        _ selection: RecordingShortcutManager.ShortcutSelection,
+        forKey userDefaultsKey: String,
+        removing legacyKey: String?
+    ) {
+        UserDefaults.standard.set(selection.rawValue, forKey: userDefaultsKey)
+
+        if let legacyKey {
+            UserDefaults.standard.removeObject(forKey: legacyKey)
+        }
     }
 
     static func removeLegacyCustomRecordingShortcut(for action: ShortcutAction) {
@@ -104,7 +167,7 @@ enum ShortcutMigration {
 
     static func migrateLegacyKeyboardShortcut(for action: ShortcutAction) {
         guard
-            ShortcutStore.storedShortcut(for: action) == nil,
+            ShortcutStore.rawShortcut(for: action) == nil,
             !ShortcutStore.isShortcutCleared(for: action),
             let shortcut = legacyKeyboardShortcut(for: action)
         else {
@@ -115,7 +178,7 @@ enum ShortcutMigration {
     }
 
     private static func migrateLegacyCustomRecordingShortcutsIfNeeded() {
-        let migrationKey = "ShortcutManager_LegacyCustomRecordingShortcutsMigrated"
+        let migrationKey = "Shortcut_LegacyCustomRecordingShortcutsMigrated"
         guard !UserDefaults.standard.bool(forKey: migrationKey) else {
             return
         }
@@ -129,7 +192,7 @@ enum ShortcutMigration {
 
     private static func migrateLegacyCustomRecordingShortcut(for action: ShortcutAction) {
         guard
-            ShortcutStore.storedShortcut(for: action) == nil,
+            ShortcutStore.rawShortcut(for: action) == nil,
             !ShortcutStore.isShortcutCleared(for: action),
             let data = UserDefaults.standard.data(forKey: legacyCustomRecordingShortcutKey(for: action)),
             let shortcut = try? JSONDecoder().decode(Shortcut.self, from: data)
@@ -174,7 +237,14 @@ enum ShortcutMigration {
     }
 
     private static func legacyCustomRecordingShortcutKey(for action: ShortcutAction) -> String {
-        "CustomRecordingShortcut_\(action.storageName)"
+        switch action {
+        case .primaryRecording:
+            return "CustomRecordingShortcut_primary"
+        case .secondaryRecording:
+            return "CustomRecordingShortcut_secondary"
+        default:
+            return "CustomRecordingShortcut_\(action.storageName)"
+        }
     }
 
     private static func legacyKeyboardShortcut(for action: ShortcutAction) -> Shortcut? {
@@ -214,5 +284,60 @@ enum ShortcutMigration {
         case .miniRecorderEscape, .miniRecorderPrompt, .miniRecorderPowerMode:
             return nil
         }
+    }
+
+    private static func recordingShortcutKey(for action: ShortcutAction) -> String {
+        switch action {
+        case .primaryRecording:
+            return "primaryRecordingShortcut"
+        case .secondaryRecording:
+            return "secondaryRecordingShortcut"
+        default:
+            return action.userDefaultsKey
+        }
+    }
+
+    private static func legacyRecordingShortcutKey(for action: ShortcutAction) -> String {
+        switch action {
+        case .primaryRecording:
+            return "selectedHotkey1"
+        case .secondaryRecording:
+            return "selectedHotkey2"
+        default:
+            return action.userDefaultsKey
+        }
+    }
+
+    private static func recordingShortcutModeKey(for action: ShortcutAction) -> String {
+        switch action {
+        case .primaryRecording:
+            return "primaryRecordingShortcutMode"
+        case .secondaryRecording:
+            return "secondaryRecordingShortcutMode"
+        default:
+            return action.userDefaultsKey
+        }
+    }
+
+    private static func legacyRecordingShortcutModeKey(for action: ShortcutAction) -> String {
+        switch action {
+        case .primaryRecording:
+            return "hotkeyMode1"
+        case .secondaryRecording:
+            return "hotkeyMode2"
+        default:
+            return action.userDefaultsKey
+        }
+    }
+
+    private static func nonEmptyString(forKey key: String) -> String? {
+        guard
+            let value = UserDefaults.standard.string(forKey: key),
+            !value.isEmpty
+        else {
+            return nil
+        }
+
+        return value
     }
 }

@@ -193,7 +193,7 @@ struct PermissionCard: View {
 }
 
 struct PermissionsView: View {
-    @EnvironmentObject private var hotkeyManager: HotkeyManager
+    @EnvironmentObject private var recordingShortcutManager: RecordingShortcutManager
     @StateObject private var permissionManager = PermissionManager()
     
     var body: some View {
@@ -213,7 +213,7 @@ struct PermissionsView: View {
                         icon: "keyboard",
                         title: "Keyboard Shortcut",
                         description: "Set up a keyboard shortcut to use VoiceInk anywhere",
-                        isGranted: hotkeyManager.isShortcutConfigured,
+                        isGranted: recordingShortcutManager.isShortcutConfigured,
                         buttonTitle: "Configure Shortcut",
                         buttonAction: {
                             NotificationCenter.default.post(
