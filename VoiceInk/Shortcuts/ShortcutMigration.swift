@@ -63,7 +63,7 @@ enum ShortcutMigration {
             return shortcutSelection(
                 from: storedValue,
                 savingTo: userDefaultsKey,
-                removing: nil,
+                removing: legacyKey,
                 action: action,
                 allowsNone: allowsNone
             )
@@ -96,6 +96,7 @@ enum ShortcutMigration {
 
         if let storedValue = nonEmptyString(forKey: userDefaultsKey),
            let mode = RecordingShortcutManager.Mode(rawValue: storedValue) {
+            UserDefaults.standard.removeObject(forKey: legacyKey)
             return mode
         }
 
@@ -166,6 +167,10 @@ enum ShortcutMigration {
     }
 
     static func migrateLegacyKeyboardShortcut(for action: ShortcutAction) {
+        defer {
+            removeLegacyKeyboardShortcut(for: action)
+        }
+
         guard
             ShortcutStore.rawShortcut(for: action) == nil,
             !ShortcutStore.isShortcutCleared(for: action),
@@ -191,6 +196,10 @@ enum ShortcutMigration {
     }
 
     private static func migrateLegacyCustomRecordingShortcut(for action: ShortcutAction) {
+        defer {
+            removeLegacyCustomRecordingShortcut(for: action)
+        }
+
         guard
             ShortcutStore.rawShortcut(for: action) == nil,
             !ShortcutStore.isShortcutCleared(for: action),
