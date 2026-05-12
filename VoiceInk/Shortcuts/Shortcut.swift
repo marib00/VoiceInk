@@ -104,10 +104,10 @@ struct Shortcut: Codable, Equatable {
         let normalizedFlags = Self.normalizedModifierFlags(eventModifierFlags, forKeyCode: eventKeyCode)
 
         if keyCode == Self.genericModifierKeyCode {
-            return normalizedFlags != modifierFlags
+            return !normalizedFlags.isSuperset(of: modifierFlags)
         }
 
-        return keyCode == eventKeyCode && !normalizedFlags.isSuperset(of: modifierFlags)
+        return keyCode == eventKeyCode
     }
 
     static func isModifierKeyCode(_ keyCode: UInt16) -> Bool {
