@@ -17,7 +17,11 @@ struct Shortcut: Codable, Equatable {
     var modifierFlags: NSEvent.ModifierFlags {
         let flags = NSEvent.ModifierFlags(rawValue: modifierFlagsRawValue)
         let keyCode = kind == .key ? keyCode : nil
-        return Self.normalizedModifierFlags(flags, forKeyCode: keyCode)
+        return Self.sanitizedModifierFlags(flags, forKeyCode: keyCode)
+    }
+
+    var genericModifierFlags: NSEvent.ModifierFlags {
+        modifierFlags.intersection(Self.relevantModifierMask)
     }
 
     var isModifierOnly: Bool {
@@ -47,11 +51,11 @@ struct Shortcut: Codable, Equatable {
         self.kind = kind
         self.keyCode = keyCode
         let keyCodeForNormalization = kind == .key ? keyCode : nil
-        self.modifierFlagsRawValue =
-            Self.normalizedModifierFlags(
-                modifierFlags,
-                forKeyCode: keyCodeForNormalization
-            ).rawValue
+        var stored = Self.sanitizedModifierFlags(modifierFlags, forKeyCode: keyCodeForNormalization)
+        if kind == .modifierOnly, keyCode != Self.genericModifierKeyCode {
+            stored = stored.intersection(Self.relevantModifierMask)
+        }
+        self.modifierFlagsRawValue = stored.rawValue
     }
 
     static func key(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> Self {
@@ -83,21 +87,33 @@ struct Shortcut: Codable, Equatable {
     }
 
     func conflicts(with other: Shortcut) -> Bool {
-        kind == other.kind && keyCode == other.keyCode && modifierFlags == other.modifierFlags
+        guard kind == other.kind, keyCode == other.keyCode, genericModifierFlags == other.genericModifierFlags else {
+            return false
+        }
+
+        return Self.modifierSidesOverlap(modifierFlags, other.modifierFlags)
     }
 
     func matchesKeyEvent(keyCode eventKeyCode: UInt16, modifierFlags eventModifierFlags: NSEvent.ModifierFlags) -> Bool
     {
-        kind == .key && keyCode == eventKeyCode
-            && modifierFlags == Self.normalizedModifierFlags(eventModifierFlags, forKeyCode: eventKeyCode)
+        guard kind == .key, keyCode == eventKeyCode else {
+            return false
+        }
+
+        let eventFlags = Self.flagsByCapturingModifierSides(eventModifierFlags, forKeyCode: eventKeyCode)
+        return Self.modifierSetsMatch(stored: modifierFlags, event: eventFlags)
     }
 
     func matchesMouseEvent(
         buttonNumber eventButtonNumber: UInt16,
         modifierFlags eventModifierFlags: NSEvent.ModifierFlags
     ) -> Bool {
-        kind == .mouseButton && keyCode == eventButtonNumber
-            && modifierFlags == Self.normalizedModifierFlags(eventModifierFlags, forKeyCode: nil)
+        guard kind == .mouseButton, keyCode == eventButtonNumber else {
+            return false
+        }
+
+        let eventFlags = Self.flagsByCapturingModifierSides(eventModifierFlags, forKeyCode: nil)
+        return Self.modifierSetsMatch(stored: modifierFlags, event: eventFlags)
     }
 
     func matchesModifierEvent(keyCode eventKeyCode: UInt16, modifierFlags eventModifierFlags: NSEvent.ModifierFlags)
@@ -107,13 +123,13 @@ struct Shortcut: Codable, Equatable {
             return false
         }
 
-        let normalizedFlags = Self.normalizedModifierFlags(eventModifierFlags, forKeyCode: eventKeyCode)
-
         if keyCode == Self.genericModifierKeyCode {
-            return normalizedFlags == modifierFlags
+            let eventFlags = Self.flagsByCapturingModifierSides(eventModifierFlags, forKeyCode: nil)
+            return Self.modifierSetsMatch(stored: modifierFlags, event: eventFlags)
         }
 
-        return keyCode == eventKeyCode && normalizedFlags == modifierFlags
+        let normalizedFlags = Self.normalizedModifierFlags(eventModifierFlags, forKeyCode: eventKeyCode)
+        return keyCode == eventKeyCode && normalizedFlags == genericModifierFlags
     }
 
     func shouldReleaseModifierEvent(
@@ -123,13 +139,29 @@ struct Shortcut: Codable, Equatable {
             return false
         }
 
-        let normalizedFlags = Self.normalizedModifierFlags(eventModifierFlags, forKeyCode: eventKeyCode)
-
         if keyCode == Self.genericModifierKeyCode {
-            return !normalizedFlags.isSuperset(of: modifierFlags)
+            return !modifiersStillHeld(in: eventModifierFlags)
         }
 
         return keyCode == eventKeyCode
+    }
+
+    func modifiersStillHeld(in eventModifierFlags: NSEvent.ModifierFlags) -> Bool {
+        let keyCodeForSides = kind == .key ? keyCode : nil
+        let current = Self.flagsByCapturingModifierSides(eventModifierFlags, forKeyCode: keyCodeForSides)
+        guard
+            current.intersection(Self.relevantModifierMask)
+                .isSuperset(of: genericModifierFlags)
+        else {
+            return false
+        }
+
+        let requiredSides = modifierFlags.intersection(Self.deviceDependentModifierMask)
+        if requiredSides.isEmpty {
+            return true
+        }
+
+        return current.intersection(Self.deviceDependentModifierMask).isSuperset(of: requiredSides)
     }
 
     func isInterruptedByAdditionalKeyDown(keyCode eventKeyCode: UInt16) -> Bool {
@@ -162,13 +194,31 @@ struct Shortcut: Codable, Equatable {
     static func normalizedModifierFlags(_ flags: NSEvent.ModifierFlags, forKeyCode keyCode: UInt16?)
         -> NSEvent.ModifierFlags
     {
-        var normalizedFlags = flags.shortcutNormalized
+        sanitizedModifierFlags(flags, forKeyCode: keyCode).intersection(relevantModifierMask)
+    }
+
+    /// Keeps left/right modifier bits already present on `flags`. Does not read the keyboard.
+    static func sanitizedModifierFlags(_ flags: NSEvent.ModifierFlags, forKeyCode keyCode: UInt16?)
+        -> NSEvent.ModifierFlags
+    {
+        var sanitized = flags.intersection(relevantModifierMask.union(deviceDependentModifierMask))
+        sanitized = removingSideBitsWithoutGenericModifier(sanitized)
 
         if let keyCode, isFunctionKeyCode(keyCode) {
-            normalizedFlags.remove(.function)
+            sanitized.remove(.function)
         }
 
-        return normalizedFlags
+        return sanitized
+    }
+
+    /// Records which physical Shift, Control, Option, and Command keys are down.
+    /// Call this from a live key or mouse event. Shortcuts built from plain flags stay side-agnostic.
+    static func flagsByCapturingModifierSides(_ flags: NSEvent.ModifierFlags, forKeyCode keyCode: UInt16?)
+        -> NSEvent.ModifierFlags
+    {
+        var captured = sanitizedModifierFlags(flags, forKeyCode: keyCode)
+        fillMissingModifierSides(into: &captured)
+        return captured
     }
 
     static func isFunctionKeyCode(_ keyCode: UInt16) -> Bool {
@@ -209,6 +259,98 @@ struct Shortcut: Codable, Equatable {
         UInt16(kVK_F19),
         UInt16(kVK_F20),
     ]
+
+    private static func modifierSetsMatch(stored: NSEvent.ModifierFlags, event: NSEvent.ModifierFlags) -> Bool {
+        guard stored.intersection(relevantModifierMask) == event.intersection(relevantModifierMask) else {
+            return false
+        }
+
+        let requiredSides = stored.intersection(deviceDependentModifierMask)
+        if requiredSides.isEmpty {
+            return true
+        }
+
+        return event.intersection(deviceDependentModifierMask) == requiredSides
+    }
+
+    private static func modifierSidesOverlap(_ lhs: NSEvent.ModifierFlags, _ rhs: NSEvent.ModifierFlags) -> Bool {
+        let leftSides = lhs.intersection(deviceDependentModifierMask)
+        let rightSides = rhs.intersection(deviceDependentModifierMask)
+        if leftSides.isEmpty || rightSides.isEmpty {
+            return true
+        }
+
+        return leftSides == rightSides
+    }
+
+    private static func removingSideBitsWithoutGenericModifier(_ flags: NSEvent.ModifierFlags) -> NSEvent.ModifierFlags {
+        var flags = flags
+        func remove(_ generic: NSEvent.ModifierFlags, _ sides: NSEvent.ModifierFlags) {
+            if !flags.contains(generic) {
+                flags.subtract(sides)
+            }
+        }
+
+        remove(.shift, [leftShiftMask, rightShiftMask])
+        remove(.control, [leftControlMask, rightControlMask])
+        remove(.option, [leftOptionMask, rightOptionMask])
+        remove(.command, [leftCommandMask, rightCommandMask])
+        return flags
+    }
+
+    private static func fillMissingModifierSides(into flags: inout NSEvent.ModifierFlags) {
+        func fill(
+            _ generic: NSEvent.ModifierFlags,
+            leftKey: Int,
+            rightKey: Int,
+            leftMask: NSEvent.ModifierFlags,
+            rightMask: NSEvent.ModifierFlags
+        ) {
+            guard flags.contains(generic), !flags.contains(leftMask), !flags.contains(rightMask) else {
+                return
+            }
+
+            if isPhysicalKeyDown(leftKey) {
+                flags.insert(leftMask)
+            }
+            if isPhysicalKeyDown(rightKey) {
+                flags.insert(rightMask)
+            }
+        }
+
+        fill(
+            .shift,
+            leftKey: Int(kVK_Shift),
+            rightKey: Int(kVK_RightShift),
+            leftMask: leftShiftMask,
+            rightMask: rightShiftMask
+        )
+        fill(
+            .control,
+            leftKey: Int(kVK_Control),
+            rightKey: Int(kVK_RightControl),
+            leftMask: leftControlMask,
+            rightMask: rightControlMask
+        )
+        fill(
+            .option,
+            leftKey: Int(kVK_Option),
+            rightKey: Int(kVK_RightOption),
+            leftMask: leftOptionMask,
+            rightMask: rightOptionMask
+        )
+        fill(
+            .command,
+            leftKey: Int(kVK_Command),
+            rightKey: Int(kVK_RightCommand),
+            leftMask: leftCommandMask,
+            rightMask: rightCommandMask
+        )
+    }
+
+    private static func isPhysicalKeyDown(_ keyCode: Int) -> Bool {
+        CGEventSource.keyState(.hidSystemState, key: CGKeyCode(UInt16(keyCode)))
+    }
 
     private static func sideSpecificModifierName(for keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> String? {
         guard modifiers.shortcutSingleModifierCount == 1 else {
@@ -407,37 +549,91 @@ struct Shortcut: Codable, Equatable {
     ]
 }
 
+private extension Shortcut {
+    static let relevantModifierMask: NSEvent.ModifierFlags = [.control, .option, .shift, .command, .function]
+
+    // NX_DEVICE* masks from IOLLEvent.h. They are the low bits of the event flag word.
+    static let leftControlMask = NSEvent.ModifierFlags(rawValue: 0x0000_0001)
+    static let leftShiftMask = NSEvent.ModifierFlags(rawValue: 0x0000_0002)
+    static let rightShiftMask = NSEvent.ModifierFlags(rawValue: 0x0000_0004)
+    static let leftCommandMask = NSEvent.ModifierFlags(rawValue: 0x0000_0008)
+    static let rightCommandMask = NSEvent.ModifierFlags(rawValue: 0x0000_0010)
+    static let leftOptionMask = NSEvent.ModifierFlags(rawValue: 0x0000_0020)
+    static let rightOptionMask = NSEvent.ModifierFlags(rawValue: 0x0000_0040)
+    static let rightControlMask = NSEvent.ModifierFlags(rawValue: 0x0000_2000)
+    static let deviceDependentModifierMask: NSEvent.ModifierFlags = [
+        leftControlMask,
+        leftShiftMask,
+        rightShiftMask,
+        leftCommandMask,
+        rightCommandMask,
+        leftOptionMask,
+        rightOptionMask,
+        rightControlMask,
+    ]
+}
+
 private extension NSEvent.ModifierFlags {
-    static let shortcutRelevant: NSEvent.ModifierFlags = [.control, .option, .shift, .command, .function]
-
-    var shortcutNormalized: NSEvent.ModifierFlags {
-        intersection(Self.shortcutRelevant)
-    }
-
     var shortcutDisplayTokens: [String] {
         var tokens: [String] = []
-
-        if contains(.control) {
-            tokens.append("⌃")
-        }
-
-        if contains(.option) {
-            tokens.append("⌥")
-        }
-
-        if contains(.shift) {
-            tokens.append("⇧")
-        }
-
-        if contains(.command) {
-            tokens.append("⌘")
-        }
+        appendSidedModifier(
+            .control,
+            left: Shortcut.leftControlMask,
+            right: Shortcut.rightControlMask,
+            symbol: "⌃",
+            to: &tokens
+        )
+        appendSidedModifier(
+            .option,
+            left: Shortcut.leftOptionMask,
+            right: Shortcut.rightOptionMask,
+            symbol: "⌥",
+            to: &tokens
+        )
+        appendSidedModifier(
+            .shift,
+            left: Shortcut.leftShiftMask,
+            right: Shortcut.rightShiftMask,
+            symbol: "⇧",
+            to: &tokens
+        )
+        appendSidedModifier(
+            .command,
+            left: Shortcut.leftCommandMask,
+            right: Shortcut.rightCommandMask,
+            symbol: "⌘",
+            to: &tokens
+        )
 
         if contains(.function) {
             tokens.append("Fn")
         }
 
         return tokens
+    }
+
+    private func appendSidedModifier(
+        _ generic: NSEvent.ModifierFlags,
+        left: NSEvent.ModifierFlags,
+        right: NSEvent.ModifierFlags,
+        symbol: String,
+        to tokens: inout [String]
+    ) {
+        guard contains(generic) else {
+            return
+        }
+
+        let hasLeft = contains(left)
+        let hasRight = contains(right)
+        if hasLeft {
+            tokens.append("Left \(symbol)")
+        }
+        if hasRight {
+            tokens.append("Right \(symbol)")
+        }
+        if !hasLeft && !hasRight {
+            tokens.append(symbol)
+        }
     }
 
     var shortcutSingleModifierCount: Int {

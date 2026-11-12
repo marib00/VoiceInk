@@ -321,11 +321,7 @@ final class ShortcutMonitor {
                 return .none
             }
 
-            let currentFlags = Shortcut.normalizedModifierFlags(
-                modifierFlags,
-                forKeyCode: shortcut.keyCode
-            )
-            return currentFlags.isSuperset(of: shortcut.modifierFlags) ? .suppress : .keyUp
+            return shortcut.modifiersStillHeld(in: modifierFlags) ? .suppress : .keyUp
         case .mouseDown, .mouseDragged, .mouseUp:
             return .none
         }
@@ -355,8 +351,7 @@ final class ShortcutMonitor {
                 return .none
             }
 
-            let currentFlags = Shortcut.normalizedModifierFlags(modifierFlags, forKeyCode: nil)
-            return currentFlags.isSuperset(of: shortcut.modifierFlags) ? .suppress : .keyUp
+            return shortcut.modifiersStillHeld(in: modifierFlags) ? .suppress : .keyUp
         case .keyDown, .keyUp, .mouseDragged:
             return .none
         }
